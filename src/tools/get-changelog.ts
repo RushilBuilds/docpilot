@@ -1,5 +1,6 @@
 import { getNpmPackage } from '../lib/registry.js';
 import { fetchJson } from '../lib/fetcher.js';
+import { resolveEcosystem } from '../lib/ecosystem.js';
 
 interface PypiVersionInfo {
   info: { version: string; summary?: string };
@@ -16,7 +17,7 @@ export async function getChangelog(
   ecosystem: 'npm' | 'pypi' | 'auto' = 'auto',
 ): Promise<string> {
   try {
-    const resolved = ecosystem === 'auto' ? detectEcosystem(packageName) : ecosystem;
+    const resolved = ecosystem === 'auto' ? await resolveEcosystem(packageName) : ecosystem;
 
     if (resolved === 'npm') {
       return await getNpmChangelog(packageName, fromVersion, toVersion);
@@ -128,11 +129,6 @@ async function getPypiChangelog(name: string, from: string, to: string): Promise
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function detectEcosystem(packageName: string): 'npm' | 'pypi' {
-  if (packageName.startsWith('@')) return 'npm';
-  return 'npm';
-}
 
 /** Very rough version sort — good enough for numeric major.minor.patch. */
 function semverish(a: string, b: string): number {
