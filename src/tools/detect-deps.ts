@@ -13,6 +13,15 @@ export interface Dependency {
  */
 export async function detectDependencies(workspacePath: string): Promise<Dependency[]> {
   const results: Dependency[] = [];
+  const seen = new Set<string>(); // deduplication key: "ecosystem:name"
+
+  const add = (dep: Dependency) => {
+    const key = `${dep.ecosystem}:${dep.name}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(dep);
+    }
+  };
 
   // --- Node / npm ---
   try {
@@ -30,7 +39,7 @@ export async function detectDependencies(workspacePath: string): Promise<Depende
     };
 
     for (const [name, version] of Object.entries(allDeps)) {
-      results.push({ name, version: cleanVersion(version), ecosystem: 'npm' });
+      add({ name, version: cleanVersion(version), ecosystem: 'npm' });
     }
   } catch {
     // package.json not found or invalid — skip
@@ -41,7 +50,7 @@ export async function detectDependencies(workspacePath: string): Promise<Depende
     const reqTxt = await readFile(join(workspacePath, 'requirements.txt'), 'utf-8');
     for (const line of reqTxt.split('\n')) {
       const parsed = parseRequirementLine(line);
-      if (parsed) results.push({ ...parsed, ecosystem: 'pypi' });
+      if (parsed) add({ ...parsed, ecosystem: 'pypi' });
     }
   } catch {
     // not found — skip
@@ -52,7 +61,7 @@ export async function detectDependencies(workspacePath: string): Promise<Depende
     const toml = await readFile(join(workspacePath, 'pyproject.toml'), 'utf-8');
     const deps = parsePyprojectDeps(toml);
     for (const dep of deps) {
-      results.push({ ...dep, ecosystem: 'pypi' });
+      add({ ...dep, ecosystem: 'pypi' });
     }
   } catch {
     // not found — skip
