@@ -1,5 +1,6 @@
 import { fetchAndParse } from '../lib/fetcher.js';
 import { getNpmPackage, getNpmDocsUrl, getPypiPackage, getPypiDocsUrl } from '../lib/registry.js';
+import { resolveEcosystem } from '../lib/ecosystem.js';
 
 const MAX_CHARS = 3000;
 
@@ -13,7 +14,7 @@ export async function getDocs(
   ecosystem: 'npm' | 'pypi' | 'auto' = 'auto',
 ): Promise<string> {
   try {
-    const resolved = ecosystem === 'auto' ? detectEcosystem(packageName) : ecosystem;
+    const resolved = ecosystem === 'auto' ? await resolveEcosystem(packageName) : ecosystem;
     const docsUrl = await resolveDocsUrl(packageName, version, resolved);
 
     if (!docsUrl) {
@@ -39,13 +40,6 @@ export async function getDocs(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function detectEcosystem(packageName: string): 'npm' | 'pypi' {
-  // Scoped npm packages always start with @
-  if (packageName.startsWith('@')) return 'npm';
-  // Heuristic: npm packages rarely have underscores as primary separator
-  return 'npm';
-}
 
 async function resolveDocsUrl(name: string, _version: string, ecosystem: 'npm' | 'pypi'): Promise<string | null> {
   if (ecosystem === 'npm') {

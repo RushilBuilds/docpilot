@@ -1,5 +1,6 @@
 import { fetchAndParse } from '../lib/fetcher.js';
 import { getNpmPackage, getNpmDocsUrl, getPypiPackage, getPypiDocsUrl } from '../lib/registry.js';
+import { resolveEcosystem } from '../lib/ecosystem.js';
 
 const TOP_K = 3;
 const CONTEXT_CHARS = 300;
@@ -19,7 +20,7 @@ export async function searchDocs(
   ecosystem: 'npm' | 'pypi' | 'auto' = 'auto',
 ): Promise<string> {
   try {
-    const resolved = ecosystem === 'auto' ? detectEcosystem(packageName) : ecosystem;
+    const resolved = ecosystem === 'auto' ? await resolveEcosystem(packageName) : ecosystem;
     const docsUrl = await resolveDocsUrl(packageName, resolved);
 
     if (!docsUrl) {
@@ -75,11 +76,6 @@ export async function searchDocs(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function detectEcosystem(packageName: string): 'npm' | 'pypi' {
-  if (packageName.startsWith('@')) return 'npm';
-  return 'npm';
-}
 
 async function resolveDocsUrl(name: string, ecosystem: 'npm' | 'pypi'): Promise<string | null> {
   if (ecosystem === 'npm') {
