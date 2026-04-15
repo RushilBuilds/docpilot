@@ -1,6 +1,8 @@
 # docpilot
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/docpilot.svg)](https://www.npmjs.com/package/docpilot)
+[![Node.js](https://img.shields.io/node/v/docpilot.svg)](https://nodejs.org)
 
 An MCP server that plugs into Claude Code and serves version-accurate documentation as context tools. Point it at your project and ask Claude about any dependency — docpilot fetches the real docs so Claude answers with current, version-specific information instead of hallucinating stale APIs.
 
@@ -8,9 +10,9 @@ An MCP server that plugs into Claude Code and serves version-accurate documentat
 
 ## Install
 
-### Quick start (npx)
+### Quick start (npx — no install needed)
 
-No installation required — Claude Code runs it on demand:
+Add this to your Claude Code config and restart:
 
 ```json
 {
@@ -23,18 +25,17 @@ No installation required — Claude Code runs it on demand:
 }
 ```
 
-Add that block to your Claude Code config file:
+**Config file location:**
+- macOS / Linux: `~/.claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-- **macOS/Linux:** `~/.claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-### Manual install
+### Global install
 
 ```bash
 npm install -g docpilot
 ```
 
-Then use `docpilot` as the command in your config instead of `npx docpilot`.
+Then use `"command": "docpilot"` (no args) in your config.
 
 ---
 
@@ -42,31 +43,66 @@ Then use `docpilot` as the command in your config instead of `npx docpilot`.
 
 | Tool | Description |
 |------|-------------|
-| `detect_dependencies` | Reads `package.json`, `requirements.txt`, or `pyproject.toml` from a workspace path and returns a structured list of packages, versions, and ecosystems |
-| `get_docs` | Given a package name and version, fetches and returns the first ~3000 chars of documentation from the package's official docs site or README |
-| `search_docs` | Given a query string and package name, performs keyword search across the docs and returns the top 3 matching sections |
-| `get_changelog` | Given a package name and two version strings, returns the version history between them using the npm or PyPI registry API |
+| `detect_dependencies` | Reads `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `package.json`, `requirements.txt`, or `pyproject.toml` from a workspace path and returns a structured JSON list of packages, exact versions, and ecosystems. Defaults to the current working directory. |
+| `get_docs` | Given a package name and version, fetches the official docs or README and returns the first ~3000 chars of meaningful content. Warns when the page may not be version-specific. |
+| `search_docs` | Given a query string and package name, keyword-searches the docs and returns the top 3 matching sections with up to 600 chars of context each. |
+| `get_changelog` | Given a package name and two version strings, fetches `CHANGELOG.md` / `HISTORY.md` from the repo and extracts the section between those versions. Falls back to registry version-date listing if no changelog file is found. |
+| `list_versions` | Lists the most recent N versions of a package from npm or PyPI with release dates and dist-tags. Use this before `get_changelog` to find valid version strings. |
+
+---
+
+## CLI usage
+
+```bash
+docpilot               # Start MCP server (stdio)
+docpilot --version     # Print version
+docpilot --help        # Show help and config instructions
+docpilot --clear-cache # Delete all cached responses from ~/.cache/docpilot/
+```
 
 ---
 
 ## How it works
 
-When you ask Claude about a dependency, docpilot first resolves the package's documentation URL from the npm or PyPI registry metadata. It then fetches that page and uses cheerio to strip navigation, scripts, and boilerplate — leaving only the meaningful content. For changelogs, it queries the registry directly and extracts the ordered version list between two specified versions. All tools return plain text that Claude can reason over directly as context.
+When you ask Claude about a dependency, docpilot resolves the package's documentation URL from the npm or PyPI registry — preferring explicit `Documentation` links, falling back to the homepage, then the GitHub repo. For GitHub URLs it fetches the raw markdown directly instead of parsing rendered HTML. Responses are cached to `~/.cache/docpilot/` with a 24-hour TTL (1 hour for registry data) and a 200 MB total cap, so repeated queries in a session are instant. For changelogs, it fetches `CHANGELOG.md` from the repo and extracts only the section between the two requested version headings. All tools handle errors gracefully and return descriptive messages rather than throwing, including a specific warning when a doc site appears to be a JavaScript-rendered SPA that cheerio cannot parse.
 
 ---
 
-## Example usage in Claude Code
+## Example prompts in Claude Code
 
 ```
-What changed between react 17.0.0 and 18.2.0?
-→ uses get_changelog
+What are the exact versions of all packages in this project?
+→ detect_dependencies (reads lock file automatically)
 
-Show me the authentication docs for passport
-→ uses search_docs with query "authentication"
+What changed in zod between 3.20.0 and 3.23.8?
+→ list_versions to confirm valid versions, then get_changelog
 
-What dependencies does this project use?
-→ uses detect_dependencies on the current workspace
+Show me the passport.js authentication middleware docs
+→ search_docs with query "authentication middleware"
+
+What does the useCallback hook do in React 18?
+→ get_docs for react@18.2.0, then search_docs with query "useCallback"
 ```
+
+---
+
+## Cache
+
+Responses are stored in `~/.cache/docpilot/` as JSON files:
+
+| Content type | TTL |
+|---|---|
+| Doc pages, READMEs | 24 hours |
+| Registry metadata (npm, PyPI) | 1 hour |
+| Ecosystem resolution (npm vs pypi) | 24 hours |
+
+Run `docpilot --clear-cache` to force-refresh everything.
+
+---
+
+## Requirements
+
+- Node.js >= 18.0.0 (uses native `fetch` and `AbortSignal.timeout`)
 
 ---
 

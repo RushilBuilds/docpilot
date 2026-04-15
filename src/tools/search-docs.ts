@@ -3,7 +3,7 @@ import { getNpmPackage, getNpmDocsUrl, getPypiPackage, getPypiDocsUrl } from '..
 import { resolveEcosystem } from '../lib/ecosystem.js';
 
 const TOP_K = 3;
-const CONTEXT_CHARS = 300;
+const CONTEXT_CHARS = 600;
 
 export interface SearchResult {
   score: number;

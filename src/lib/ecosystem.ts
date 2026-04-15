@@ -1,17 +1,23 @@
 import { getNpmPackage, getPypiPackage } from './registry.js';
+import { withCache } from './cache.js';
 
 /**
  * Resolve the ecosystem for a package name.
  *
  * Strategy:
  * 1. Scoped npm packages (@scope/pkg) are always npm.
- * 2. Otherwise query both registries in parallel and use whichever responds first.
- *    If only one succeeds, use that. If both succeed, prefer npm (most common case
- *    for ambiguous names — can be overridden by passing ecosystem explicitly).
+ * 2. Otherwise query both registries in parallel and use whichever responds.
+ *    If only one succeeds, use that. If both succeed, prefer npm.
+ *
+ * Result is cached for 24 hours — a package's registry membership rarely changes.
+ * This avoids 2 network calls on every auto-detect tool invocation.
  */
 export async function resolveEcosystem(packageName: string): Promise<'npm' | 'pypi'> {
   if (packageName.startsWith('@')) return 'npm';
+  return withCache(`ecosystem:${packageName}`, () => detectEcosystem(packageName));
+}
 
+async function detectEcosystem(packageName: string): Promise<'npm' | 'pypi'> {
   const npmResult = getNpmPackage(packageName).then(() => 'npm' as const).catch(() => null);
   const pypiResult = getPypiPackage(packageName).then(() => 'pypi' as const).catch(() => null);
 

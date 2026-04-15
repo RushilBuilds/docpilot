@@ -106,6 +106,14 @@ async function fetchAndParseUncached(url: string): Promise<FetchResult> {
   });
 
   const text = paragraphs.join('\n\n');
+
+  // Detect SPA/JS-rendered pages: very little content but the page loaded fine.
+  // Common for modern doc sites (Next.js, Vite, Tailwind, FastAPI etc.).
+  if (paragraphs.length < 4 && text.length < 300) {
+    const spaWarning = `[docpilot] This page returned very little readable content (${paragraphs.length} paragraph(s), ${text.length} chars). The site is likely a JavaScript-rendered SPA that requires a browser to render. Cheerio cannot execute JS. Try one of these alternatives:\n  1. Find the package's GitHub repo and read the raw README instead.\n  2. Check if the package has a readthedocs.io or similar static docs site.\n  3. Search the npm/PyPI registry page directly for quick reference.\n\nPartial content extracted:\n${text}`;
+    return { text: spaWarning, paragraphs: [spaWarning] };
+  }
+
   return { text, paragraphs };
 }
 
@@ -113,15 +121,17 @@ async function fetchAndParseUncached(url: string): Promise<FetchResult> {
  * Fetch raw JSON from a URL.
  * Registry responses are cached for 1 hour (shorter TTL than HTML docs).
  */
-export async function fetchJson<T = unknown>(url: string): Promise<T> {
-  return withCache(`fetchJson:${url}`, () => withRetry(() => fetchJsonUncached<T>(url)), 60 * 60 * 1000);
+export async function fetchJson<T = unknown>(url: string, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const cacheKey = `fetchJson:${url}:${JSON.stringify(extraHeaders)}`;
+  return withCache(cacheKey, () => withRetry(() => fetchJsonUncached<T>(url, extraHeaders)), 60 * 60 * 1000);
 }
 
-async function fetchJsonUncached<T>(url: string): Promise<T> {
+async function fetchJsonUncached<T>(url: string, extraHeaders: Record<string, string> = {}): Promise<T> {
   const response = await fetch(url, {
     headers: {
       'User-Agent': USER_AGENT,
       'Accept': 'application/json',
+      ...extraHeaders,
     },
     signal: AbortSignal.timeout(15_000),
   });

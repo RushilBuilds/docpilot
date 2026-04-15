@@ -10,6 +10,8 @@ export interface Dependency {
 /**
  * Detect dependencies from a workspace directory.
  * Supports package.json (npm), requirements.txt (PyPI), and pyproject.toml (PyPI).
+ * Prefers lock files (package-lock.json, pnpm-lock.yaml, yarn.lock) for exact
+ * resolved versions rather than semver ranges from package.json.
  */
 export async function detectDependencies(workspacePath: string): Promise<Dependency[]> {
   const results: Dependency[] = [];
@@ -23,27 +25,9 @@ export async function detectDependencies(workspacePath: string): Promise<Depende
     }
   };
 
-  // --- Node / npm ---
-  try {
-    const pkgJson = await readFile(join(workspacePath, 'package.json'), 'utf-8');
-    const pkg = JSON.parse(pkgJson) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-      peerDependencies?: Record<string, string>;
-    };
-
-    const allDeps = {
-      ...pkg.dependencies,
-      ...pkg.devDependencies,
-      ...pkg.peerDependencies,
-    };
-
-    for (const [name, version] of Object.entries(allDeps)) {
-      add({ name, version: cleanVersion(version), ecosystem: 'npm' });
-    }
-  } catch {
-    // package.json not found or invalid — skip
-  }
+  // --- Node / npm: prefer lock files for exact versions ---
+  const npmDeps = await readNpmDeps(workspacePath);
+  for (const dep of npmDeps) add(dep);
 
   // --- Python / requirements.txt ---
   try {
@@ -71,7 +55,121 @@ export async function detectDependencies(workspacePath: string): Promise<Depende
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// npm lock file readers
+// ---------------------------------------------------------------------------
+
+async function readNpmDeps(workspacePath: string): Promise<Dependency[]> {
+  // 1. package-lock.json (npm)
+  try {
+    const raw = await readFile(join(workspacePath, 'package-lock.json'), 'utf-8');
+    const lock = JSON.parse(raw) as {
+      lockfileVersion?: number;
+      packages?: Record<string, { version?: string; dev?: boolean }>;
+      dependencies?: Record<string, { version: string }>;
+    };
+
+    const deps: Dependency[] = [];
+
+    // lockfileVersion 2/3: use "packages" (node_modules/name)
+    if (lock.packages) {
+      for (const [key, entry] of Object.entries(lock.packages)) {
+        if (!key || !entry.version) continue; // skip root entry (empty key)
+        // key is like "node_modules/react" or "node_modules/@scope/pkg"
+        const name = key.replace(/^node_modules\//, '');
+        deps.push({ name, version: entry.version, ecosystem: 'npm' });
+      }
+      return deps;
+    }
+
+    // lockfileVersion 1: use "dependencies"
+    if (lock.dependencies) {
+      for (const [name, entry] of Object.entries(lock.dependencies)) {
+        deps.push({ name, version: entry.version, ecosystem: 'npm' });
+      }
+      return deps;
+    }
+  } catch {
+    // no package-lock.json — try next
+  }
+
+  // 2. pnpm-lock.yaml
+  try {
+    const raw = await readFile(join(workspacePath, 'pnpm-lock.yaml'), 'utf-8');
+    return parsePnpmLock(raw);
+  } catch {
+    // no pnpm-lock.yaml — try next
+  }
+
+  // 3. yarn.lock
+  try {
+    const raw = await readFile(join(workspacePath, 'yarn.lock'), 'utf-8');
+    return parseYarnLock(raw);
+  } catch {
+    // no yarn.lock — fall back to package.json ranges
+  }
+
+  // 4. Fallback: package.json semver ranges
+  try {
+    const pkgJson = await readFile(join(workspacePath, 'package.json'), 'utf-8');
+    const pkg = JSON.parse(pkgJson) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+
+    const allDeps = {
+      ...pkg.dependencies,
+      ...pkg.devDependencies,
+      ...pkg.peerDependencies,
+    };
+
+    return Object.entries(allDeps).map(([name, version]) => ({
+      name,
+      version: cleanVersion(version),
+      ecosystem: 'npm' as const,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse pnpm-lock.yaml for resolved package versions.
+ * Handles v6+ format: packages section with "  /react@18.2.0:" keys.
+ */
+function parsePnpmLock(content: string): Dependency[] {
+  const deps: Dependency[] = [];
+  // Match lines like:  /react@18.2.0:  or  /react/18.2.0:
+  const re = /^\s{2}\/([^@:/\s]+(?:\/[^@:/\s]+)?)[@/]([^\s:]+):/gm;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    const name = match[1]?.replace(/\//g, '/') ?? '';
+    const version = match[2] ?? '';
+    if (name && version) deps.push({ name, version, ecosystem: 'npm' });
+  }
+  return deps;
+}
+
+/**
+ * Parse yarn.lock for resolved package versions.
+ * Handles both v1 and berry (v2+) formats.
+ */
+function parseYarnLock(content: string): Dependency[] {
+  const deps: Dependency[] = [];
+  // Match block headers like: "react@^18.0.0, react@^18.2.0:"
+  // followed by a "  version: X.Y.Z" line
+  const blockRe = /^"?(@?[^@\s"]+)@[^:]+:?\n(?:.*\n)*?\s+version:?\s+"?([^\s"]+)/gm;
+  let match: RegExpExecArray | null;
+  while ((match = blockRe.exec(content)) !== null) {
+    const name = match[1] ?? '';
+    const version = match[2] ?? '';
+    if (name && version) deps.push({ name, version, ecosystem: 'npm' });
+  }
+  return deps;
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
 // ---------------------------------------------------------------------------
 
 function cleanVersion(version: string): string {

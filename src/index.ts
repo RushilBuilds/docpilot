@@ -9,44 +9,8 @@ import { searchDocs } from './tools/search-docs.js';
 import { getChangelog } from './tools/get-changelog.js';
 import { listVersions } from './tools/list-versions.js';
 import { VERSION } from './lib/version.js';
+import { clearCache } from './lib/cache.js';
 
-// ---------------------------------------------------------------------------
-// CLI flags — handle before starting MCP server
-// ---------------------------------------------------------------------------
-const arg = process.argv[2];
-if (arg === '--version' || arg === '-v') {
-  process.stdout.write(`docpilot v${VERSION}\n`);
-  process.exit(0);
-}
-if (arg === '--help' || arg === '-h') {
-  process.stdout.write(`docpilot v${VERSION} — MCP documentation server for Claude Code
-
-Usage:
-  docpilot            Start the MCP server (stdio transport)
-  docpilot --version  Print version and exit
-  docpilot --help     Show this help
-
-Claude Code config (~/.claude/claude_desktop_config.json):
-  {
-    "mcpServers": {
-      "docpilot": {
-        "command": "npx",
-        "args": ["docpilot"]
-      }
-    }
-  }
-
-Tools exposed to Claude:
-  detect_dependencies  Scan workspace for npm/PyPI dependencies
-  get_docs             Fetch docs for a package at a specific version
-  search_docs          Keyword search across a package's documentation
-  get_changelog        Get changelog between two versions
-  list_versions        List recent versions of a package
-
-Docs cache: ~/.cache/docpilot/  (24h TTL for pages, 1h for registry data)
-`);
-  process.exit(0);
-}
 
 const server = new McpServer({
   name: 'docpilot',
@@ -58,22 +22,24 @@ const server = new McpServer({
 // ---------------------------------------------------------------------------
 server.tool(
   'detect_dependencies',
-  'Reads package.json, requirements.txt, or pyproject.toml from the given workspace path and returns a structured list of packages with their versions and ecosystem.',
+  'Reads package.json, requirements.txt, or pyproject.toml from the given workspace path and returns a structured list of packages with their versions and ecosystem. Defaults to the current working directory if no path is provided.',
   {
     workspace_path: z
       .string()
-      .describe('Absolute path to the project root directory to scan for dependency files'),
+      .optional()
+      .describe('Absolute path to the project root directory. Defaults to the current working directory (process.cwd()) if omitted.'),
   },
   async ({ workspace_path }) => {
+    const resolvedPath = workspace_path ?? process.cwd();
     try {
-      const deps = await detectDependencies(workspace_path);
+      const deps = await detectDependencies(resolvedPath);
 
       if (deps.length === 0) {
         return {
           content: [
             {
               type: 'text',
-              text: `No dependency files found at ${workspace_path}. Expected package.json, requirements.txt, or pyproject.toml.`,
+              text: `No dependency files found at ${resolvedPath}. Expected package.json, requirements.txt, or pyproject.toml.`,
             },
           ],
         };
@@ -83,7 +49,7 @@ server.tool(
       const pypiDeps = deps.filter(d => d.ecosystem === 'pypi');
 
       const summary = [
-        `Found ${deps.length} dependencies in ${workspace_path}`,
+        `Found ${deps.length} dependencies in ${resolvedPath}`,
         npmDeps.length > 0 ? `  npm: ${npmDeps.length}` : null,
         pypiDeps.length > 0 ? `  pypi: ${pypiDeps.length}` : null,
       ].filter(Boolean).join('\n');
@@ -193,13 +159,56 @@ server.tool(
 );
 
 // ---------------------------------------------------------------------------
-// Start server
+// Start server (all CLI flag handling lives here to allow top-level await)
 // ---------------------------------------------------------------------------
 async function main() {
+  const arg = process.argv[2];
+
+  if (arg === '--version' || arg === '-v') {
+    process.stdout.write(`docpilot v${VERSION}\n`);
+    process.exit(0);
+  }
+
+  if (arg === '--clear-cache') {
+    const count = await clearCache();
+    process.stdout.write(`docpilot: cleared ${count} cache file(s) from ~/.cache/docpilot/\n`);
+    process.exit(0);
+  }
+
+  if (arg === '--help' || arg === '-h') {
+    process.stdout.write(`docpilot v${VERSION} — MCP documentation server for Claude Code
+
+Usage:
+  docpilot               Start the MCP server (stdio transport)
+  docpilot --version     Print version and exit
+  docpilot --help        Show this help
+  docpilot --clear-cache Delete all cached responses from ~/.cache/docpilot/
+
+Claude Code config (~/.claude/claude_desktop_config.json):
+  {
+    "mcpServers": {
+      "docpilot": {
+        "command": "npx",
+        "args": ["docpilot"]
+      }
+    }
+  }
+
+Tools exposed to Claude:
+  detect_dependencies  Scan workspace for npm/PyPI dependencies
+  get_docs             Fetch docs for a package at a specific version
+  search_docs          Keyword search across a package's documentation
+  get_changelog        Get changelog between two versions
+  list_versions        List recent versions of a package
+
+Docs cache: ~/.cache/docpilot/  (24h TTL for pages, 1h for registry data)
+`);
+    process.exit(0);
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  // Log to stderr so it doesn't interfere with MCP stdio protocol
-  process.stderr.write('docpilot MCP server running on stdio\n');
+  process.stderr.write(`docpilot v${VERSION} MCP server running on stdio\n`);
 }
 
 main().catch(err => {

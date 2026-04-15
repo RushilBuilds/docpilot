@@ -4,6 +4,11 @@ import { fetchJson } from './fetcher.js';
 // npm registry types
 // ---------------------------------------------------------------------------
 
+/**
+ * Abbreviated npm package info — returned by the npm registry when using
+ * Accept: application/vnd.npm.install-v1+json. Much smaller than the full
+ * document (10-100x smaller for popular packages like react, lodash, aws-sdk).
+ */
 export interface NpmPackageInfo {
   name: string;
   description?: string;
@@ -52,7 +57,12 @@ export interface PypiReleaseFile {
 
 export async function getNpmPackage(name: string): Promise<NpmPackageInfo> {
   const encoded = encodeURIComponent(name).replace('%40', '@').replace('%2F', '/');
-  return fetchJson<NpmPackageInfo>(`https://registry.npmjs.org/${encoded}`);
+  // Use abbreviated registry response — dramatically smaller for large packages.
+  // Falls back to full response if the abbreviated endpoint isn't available.
+  return fetchJson<NpmPackageInfo>(
+    `https://registry.npmjs.org/${encoded}`,
+    { 'Accept': 'application/vnd.npm.install-v1+json' },
+  );
 }
 
 export function getNpmDocsUrl(pkg: NpmPackageInfo): string | null {
