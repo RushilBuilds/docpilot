@@ -7,6 +7,7 @@ import { detectDependencies } from './tools/detect-deps.js';
 import { getDocs } from './tools/get-docs.js';
 import { searchDocs } from './tools/search-docs.js';
 import { getChangelog } from './tools/get-changelog.js';
+import { listVersions } from './tools/list-versions.js';
 
 const server = new McpServer({
   name: 'docpilot',
@@ -117,6 +118,32 @@ server.tool(
   },
   async ({ package_name, from_version, to_version, ecosystem }) => {
     const text = await getChangelog(package_name, from_version, to_version, ecosystem);
+    return { content: [{ type: 'text', text }] };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool: list_versions
+// ---------------------------------------------------------------------------
+server.tool(
+  'list_versions',
+  'Lists the most recent versions of a package from the npm or PyPI registry, with release dates and dist-tags. Useful before calling get_changelog to find valid version strings.',
+  {
+    package_name: z.string().describe('Package name'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(20)
+      .describe('Maximum number of recent versions to return (default 20, max 100)'),
+    ecosystem: z
+      .enum(['npm', 'pypi', 'auto'])
+      .default('auto')
+      .describe('Package ecosystem. Use "auto" to infer from the package name'),
+  },
+  async ({ package_name, limit, ecosystem }) => {
+    const text = await listVersions(package_name, limit, ecosystem);
     return { content: [{ type: 'text', text }] };
   },
 );

@@ -28,9 +28,12 @@ export async function getDocs(
       return `Fetched documentation page for ${packageName} but could not extract readable text. URL: ${docsUrl}`;
     }
 
+    const versionWarning = buildVersionWarning(docsUrl, version);
     const snippet = trimmed.slice(0, MAX_CHARS);
-    const suffix = trimmed.length > MAX_CHARS ? `\n\n[...truncated — ${trimmed.length} chars total. Source: ${docsUrl}]` : `\n\nSource: ${docsUrl}`;
-    return snippet + suffix;
+    const truncationNote = trimmed.length > MAX_CHARS
+      ? `\n\n[...truncated — ${trimmed.length} chars total]`
+      : '';
+    return `${snippet}${truncationNote}${versionWarning}\n\nSource: ${docsUrl}`;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return `Error fetching docs for ${packageName}@${version}: ${message}`;
@@ -40,6 +43,19 @@ export async function getDocs(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Warn if the resolved docs URL contains no version segment matching the requested version.
+ * Many doc sites embed the version in the URL path (e.g. /v18/, /3.x/, /en/stable/).
+ */
+function buildVersionWarning(url: string, requestedVersion: string): string {
+  const major = requestedVersion.split('.')[0];
+  // Check if the URL contains any version-like segment
+  const hasVersionInUrl = /\/v?\d+[./]|\/stable\/|\/latest\/|\/en\//.test(url);
+  if (hasVersionInUrl) return ''; // URL appears versioned — no warning needed
+
+  return `\n\n[Note: docs URL does not contain a version path segment. Content may reflect the latest version, not ${requestedVersion} (major: ${major}). Check the site for versioned docs if available.]`;
+}
 
 async function resolveDocsUrl(name: string, _version: string, ecosystem: 'npm' | 'pypi'): Promise<string | null> {
   if (ecosystem === 'npm') {
