@@ -1,8 +1,8 @@
 # docpilot
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/docpilot.svg)](https://www.npmjs.com/package/docpilot)
-[![Node.js](https://img.shields.io/node/v/docpilot.svg)](https://nodejs.org)
+[![version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/RushilBuilds/docpilot)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org)
 
 An MCP server that plugs into Claude Code and serves version-accurate documentation as context tools. Point it at your project and ask Claude about any dependency — docpilot fetches the real docs so Claude answers with current, version-specific information instead of hallucinating stale APIs.
 
