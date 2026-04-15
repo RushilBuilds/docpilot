@@ -72,9 +72,35 @@ function githubUrlFromRepoString(raw: string): string | null {
   // Handle git+https://github.com/... or github:user/repo etc.
   const match = raw.match(/github\.com[:/]([^/]+\/[^/.]+)/);
   if (match) {
-    return `https://github.com/${match[1]}#readme`;
+    // Return raw markdown URL — cleaner than parsing rendered GitHub HTML
+    const slug = match[1].replace(/\.git$/, '');
+    return rawGithubReadmeUrl(slug);
   }
   return null;
+}
+
+/**
+ * Given a "user/repo" slug, return the raw README URL trying common default branches.
+ * We default to main; the fetcher will follow redirects if it 404s.
+ */
+export function rawGithubReadmeUrl(slug: string): string {
+  return `https://raw.githubusercontent.com/${slug}/main/README.md`;
+}
+
+/**
+ * If a URL points to a rendered GitHub page, rewrite it to the raw README URL.
+ * Handles:
+ *   https://github.com/user/repo            → raw main/README.md
+ *   https://github.com/user/repo#readme     → raw main/README.md
+ *   https://raw.githubusercontent.com/...   → unchanged
+ */
+export function rewriteToRawGithub(url: string): string {
+  const ghPage = url.match(/^https?:\/\/github\.com\/([^/]+\/[^/#?]+)/);
+  if (ghPage) {
+    const slug = ghPage[1].replace(/\.git$/, '');
+    return rawGithubReadmeUrl(slug);
+  }
+  return url;
 }
 
 // ---------------------------------------------------------------------------
