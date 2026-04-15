@@ -58,22 +58,24 @@ const server = new McpServer({
 // ---------------------------------------------------------------------------
 server.tool(
   'detect_dependencies',
-  'Reads package.json, requirements.txt, or pyproject.toml from the given workspace path and returns a structured list of packages with their versions and ecosystem.',
+  'Reads package.json, requirements.txt, or pyproject.toml from the given workspace path and returns a structured list of packages with their versions and ecosystem. Defaults to the current working directory if no path is provided.',
   {
     workspace_path: z
       .string()
-      .describe('Absolute path to the project root directory to scan for dependency files'),
+      .optional()
+      .describe('Absolute path to the project root directory. Defaults to the current working directory (process.cwd()) if omitted.'),
   },
   async ({ workspace_path }) => {
+    const resolvedPath = workspace_path ?? process.cwd();
     try {
-      const deps = await detectDependencies(workspace_path);
+      const deps = await detectDependencies(resolvedPath);
 
       if (deps.length === 0) {
         return {
           content: [
             {
               type: 'text',
-              text: `No dependency files found at ${workspace_path}. Expected package.json, requirements.txt, or pyproject.toml.`,
+              text: `No dependency files found at ${resolvedPath}. Expected package.json, requirements.txt, or pyproject.toml.`,
             },
           ],
         };
@@ -83,7 +85,7 @@ server.tool(
       const pypiDeps = deps.filter(d => d.ecosystem === 'pypi');
 
       const summary = [
-        `Found ${deps.length} dependencies in ${workspace_path}`,
+        `Found ${deps.length} dependencies in ${resolvedPath}`,
         npmDeps.length > 0 ? `  npm: ${npmDeps.length}` : null,
         pypiDeps.length > 0 ? `  pypi: ${pypiDeps.length}` : null,
       ].filter(Boolean).join('\n');
