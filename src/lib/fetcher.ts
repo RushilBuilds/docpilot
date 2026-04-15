@@ -113,15 +113,17 @@ async function fetchAndParseUncached(url: string): Promise<FetchResult> {
  * Fetch raw JSON from a URL.
  * Registry responses are cached for 1 hour (shorter TTL than HTML docs).
  */
-export async function fetchJson<T = unknown>(url: string): Promise<T> {
-  return withCache(`fetchJson:${url}`, () => withRetry(() => fetchJsonUncached<T>(url)), 60 * 60 * 1000);
+export async function fetchJson<T = unknown>(url: string, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const cacheKey = `fetchJson:${url}:${JSON.stringify(extraHeaders)}`;
+  return withCache(cacheKey, () => withRetry(() => fetchJsonUncached<T>(url, extraHeaders)), 60 * 60 * 1000);
 }
 
-async function fetchJsonUncached<T>(url: string): Promise<T> {
+async function fetchJsonUncached<T>(url: string, extraHeaders: Record<string, string> = {}): Promise<T> {
   const response = await fetch(url, {
     headers: {
       'User-Agent': USER_AGENT,
       'Accept': 'application/json',
+      ...extraHeaders,
     },
     signal: AbortSignal.timeout(15_000),
   });
