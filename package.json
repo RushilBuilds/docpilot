@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "MCP server that serves version-accurate documentation as context tools for Claude Code",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "docpilot": "dist/index.js"
   },
