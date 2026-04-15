@@ -1,0 +1,41 @@
+{
+  "name": "docpilot",
+  "version": "1.0.0",
+  "description": "MCP server that serves version-accurate documentation as context tools for Claude Code",
+  "main": "dist/index.js",
+  "bin": {
+    "docpilot": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RushilBuilds/docpilot"
+  },
+  "keywords": [
+    "mcp",
+    "claude",
+    "documentation",
+    "npm",
+    "pypi"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "cheerio": "^1.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}
