@@ -1,6 +1,28 @@
 import * as cheerio from 'cheerio';
 import { withCache } from './cache.js';
 import { rewriteToRawGithub } from './registry.js';
+import { USER_AGENT } from './version.js';
+
+/**
+ * Retry an async operation up to maxAttempts times with exponential backoff.
+ * Only retries on network-level errors (not HTTP 4xx client errors).
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      // Don't retry on HTTP client errors (4xx) — they won't change
+      if (err instanceof Error && err.message.match(/HTTP 4\d\d/)) throw err;
+      if (attempt < maxAttempts - 1) {
+        await new Promise(res => setTimeout(res, 1000 * 2 ** attempt)); // 1s, 2s, 4s
+      }
+    }
+  }
+  throw lastErr;
+}
 
 export interface FetchResult {
   text: string;
@@ -12,7 +34,7 @@ export interface FetchResult {
  * Results are cached to ~/.cache/docpilot/ for 24 hours.
  */
 export async function fetchAndParse(url: string): Promise<FetchResult> {
-  return withCache(`fetchAndParse:${url}`, () => fetchAndParseUncached(url));
+  return withCache(`fetchAndParse:${url}`, () => withRetry(() => fetchAndParseUncached(url)));
 }
 
 async function fetchAndParseUncached(url: string): Promise<FetchResult> {
@@ -21,7 +43,7 @@ async function fetchAndParseUncached(url: string): Promise<FetchResult> {
 
   const response = await fetch(resolvedUrl, {
     headers: {
-      'User-Agent': 'docpilot/1.0.0 (MCP documentation server)',
+      'User-Agent': USER_AGENT,
       'Accept': 'text/html,text/plain,application/xhtml+xml,*/*',
     },
     signal: AbortSignal.timeout(15_000),
@@ -92,13 +114,13 @@ async function fetchAndParseUncached(url: string): Promise<FetchResult> {
  * Registry responses are cached for 1 hour (shorter TTL than HTML docs).
  */
 export async function fetchJson<T = unknown>(url: string): Promise<T> {
-  return withCache(`fetchJson:${url}`, () => fetchJsonUncached<T>(url), 60 * 60 * 1000);
+  return withCache(`fetchJson:${url}`, () => withRetry(() => fetchJsonUncached<T>(url)), 60 * 60 * 1000);
 }
 
 async function fetchJsonUncached<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'docpilot/1.0.0 (MCP documentation server)',
+      'User-Agent': USER_AGENT,
       'Accept': 'application/json',
     },
     signal: AbortSignal.timeout(15_000),
